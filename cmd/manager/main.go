@@ -128,6 +128,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "9c4404e7.operatorframework.io",
+		PprofBindAddress:       "127.0.0.1:8989",
 		Cache: crcache.Options{
 			ByObject: map[client.Object]crcache.ByObject{
 				&ocv1alpha1.ClusterExtension{}: {Label: k8slabels.Everything()},
