@@ -1,5 +1,13 @@
 ```Bash
-eochieng@eochieng-thinkpadp16vgen1:~$ hey -c 1 -z 30s -m GET https://localhost:8083/catalogs/operatorhubio/all.json
+➜  ~ kubectl -n olmv1-system top pod   
+NAME                                                     CPU(cores)   MEMORY(bytes)   
+catalogd-controller-manager-749cdb9878-jxgrm             1m           28Mi            
+operator-controller-controller-manager-884c87c46-tz4cs   2m           23Mi            
+➜  ~ 
+```
+
+```Bash
+➜  ~ hey -c 1 -z 30s -m GET https://localhost:8083/catalogs/operatorhubio/all.json
 
 Summary:
   Total:	30.0579 secs
@@ -46,13 +54,13 @@ Status code distribution:
 
 
 
-eochieng@eochieng-thinkpadp16vgen1:~$
+➜  ~
 ```
 
 
 
 ```Bash
-eochieng@eochieng-thinkpadp16vgen1:~$ hey -c 5 -z 30s -m GET https://localhost:8083/catalogs/operatorhubio/all.json
+➜  ~ hey -c 5 -z 30s -m GET https://localhost:8083/catalogs/operatorhubio/all.json
 
 Summary:
   Total:	30.4993 secs
@@ -99,7 +107,7 @@ Status code distribution:
 
 
 
-eochieng@eochieng-thinkpadp16vgen1:~$ 
+➜  ~ 
 `
 
 
@@ -107,7 +115,7 @@ eochieng@eochieng-thinkpadp16vgen1:~$
 
 
 ```Bash
-eochieng@eochieng-thinkpadp16vgen1:~$ hey -c 20 -z 30s -m GET https://localhost:8083/catalogs/operatorhubio/all.json
+➜  ~ hey -c 20 -z 30s -m GET https://localhost:8083/catalogs/operatorhubio/all.json
 
 Summary:
   Total:	32.1419 secs
@@ -154,12 +162,12 @@ Status code distribution:
 
 
 
-eochieng@eochieng-thinkpadp16vgen1:~$ 
+➜  ~ 
 ```
 
 
 ```Bash
-eochieng@eochieng-thinkpadp16vgen1:~$ hey -c 100 -z 30s -m GET https://localhost:8083/catalogs/operatorhubio/all.json
+➜  ~ hey -c 100 -z 30s -m GET https://localhost:8083/catalogs/operatorhubio/all.json
 
 Summary:
   Total:	34.4248 secs
@@ -206,5 +214,5 @@ Status code distribution:
 
 
 
-eochieng@eochieng-thinkpadp16vgen1:~$
+➜  ~
 ```
