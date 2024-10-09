@@ -409,7 +409,7 @@ func run() error {
 		Preflights:         preflights,
 	}
 
-	helmer := &controllers.Engine{
+	helmEngine := &controllers.Engine{
 		Unpacker: &source.TarGZ{
 			BaseCachePath: filepath.Join(cfg.cachePath, "charts"),
 		},
@@ -418,9 +418,16 @@ func run() error {
 		},
 	}
 
-	_ = &controllers.Engine{
+	olmEngine := &controllers.Engine{
 		Unpacker: unpacker,
 		Applier:  olmApplier,
+	}
+
+	enginator := &controllers.Enginator{
+		Router: map[string]*controllers.Engine{
+			"helm": helmEngine,
+		},
+		DefaultEngine: olmEngine,
 	}
 
 	cm := contentmanager.NewManager(clientRestConfigMapper, mgr.GetConfig(), mgr.GetRESTMapper())
@@ -437,7 +444,7 @@ func run() error {
 	if err = (&controllers.ClusterExtensionReconciler{
 		Client:                cl,
 		Resolver:              resolver,
-		Engine:                helmer,
+		Enginator:             enginator,
 		InstalledBundleGetter: &controllers.DefaultInstalledBundleGetter{ActionClientGetter: acg},
 		Finalizers:            clusterExtensionFinalizers,
 		Manager:               cm,
