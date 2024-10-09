@@ -29,6 +29,8 @@ import (
 	"time"
 
 	"github.com/containers/image/v5/types"
+	"github.com/go-logr/logr"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -47,7 +49,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	crfinalizer "sigs.k8s.io/controller-runtime/pkg/finalizer"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -57,7 +58,6 @@ import (
 	"github.com/operator-framework/operator-controller/internal/operator-controller/action"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/applier"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/authentication"
-	"github.com/operator-framework/operator-controller/internal/operator-controller/authorization"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/catalogmetadata/cache"
 	catalogclient "github.com/operator-framework/operator-controller/internal/operator-controller/catalogmetadata/client"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/contentmanager"
@@ -65,12 +65,11 @@ import (
 	"github.com/operator-framework/operator-controller/internal/operator-controller/features"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/finalizers"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/resolve"
-	"github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/convert"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/preflights/crdupgradesafety"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/source"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/scheme"
 	fsutil "github.com/operator-framework/operator-controller/internal/shared/util/fs"
 	httputil "github.com/operator-framework/operator-controller/internal/shared/util/http"
-	imageutil "github.com/operator-framework/operator-controller/internal/shared/util/image"
 	"github.com/operator-framework/operator-controller/internal/shared/version"
 )
 
@@ -178,6 +177,10 @@ func validateMetricsFlags() error {
 	return nil
 }
 func run() error {
+	if klog.V(4).Enabled() {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
+
 	setupLog.Info("starting up the controller", "version info", version.String())
 
 	// log feature gate status after parsing flags and setting up logger
@@ -346,14 +349,13 @@ func run() error {
 		return err
 	}
 
-	imageCache := imageutil.BundleCache(filepath.Join(cfg.cachePath, "unpack"))
-	imagePuller := &imageutil.ContainersImagePuller{
-		SourceCtxFunc: func(ctx context.Context) (*types.SystemContext, error) {
+	unpacker := &source.ContainersImageRegistry{
+		BaseCachePath: filepath.Join(cfg.cachePath, "unpack"),
+		SourceContextFunc: func(logger logr.Logger) (*types.SystemContext, error) {
 			srcContext := &types.SystemContext{
 				DockerCertPath: cfg.pullCasDir,
 				OCICertPath:    cfg.pullCasDir,
 			}
-			logger := log.FromContext(ctx)
 			if _, err := os.Stat(authFilePath); err == nil && globalPullSecretKey != nil {
 				logger.Info("using available authentication information for pulling image")
 				srcContext.AuthFilePath = authFilePath
@@ -368,7 +370,7 @@ func run() error {
 
 	clusterExtensionFinalizers := crfinalizer.NewFinalizers()
 	if err := clusterExtensionFinalizers.Register(controllers.ClusterExtensionCleanupUnpackCacheFinalizer, finalizers.FinalizerFunc(func(ctx context.Context, obj client.Object) (crfinalizer.Result, error) {
-		return crfinalizer.Result{}, imageCache.Delete(ctx, obj.GetName())
+		return crfinalizer.Result{}, unpacker.Cleanup(ctx, &source.BundleSource{Name: obj.GetName()})
 	})); err != nil {
 		setupLog.Error(err, "unable to register finalizer", "finalizerKey", controllers.ClusterExtensionCleanupUnpackCacheFinalizer)
 		return err
@@ -412,18 +414,23 @@ func run() error {
 		crdupgradesafety.NewPreflight(aeClient.CustomResourceDefinitions()),
 	}
 
-	// determine if PreAuthorizer should be enabled based on feature gate
-	var preAuth authorization.PreAuthorizer
-	if features.OperatorControllerFeatureGate.Enabled(features.PreflightPermissions) {
-		preAuth = authorization.NewRBACPreAuthorizer(mgr.GetClient())
+	olmApplier := &applier.Helm{
+		ActionClientGetter: acg,
+		Preflights:         preflights,
 	}
 
-	// now initialize the helmApplier, assigning the potentially nil preAuth
-	helmApplier := &applier.Helm{
-		ActionClientGetter:  acg,
-		Preflights:          preflights,
-		BundleToHelmChartFn: convert.RegistryV1ToHelmChart,
-		PreAuthorizer:       preAuth,
+	helmer := &controllers.Engine{
+		Unpacker: &source.TarGZ{
+			BaseCachePath: filepath.Join(cfg.cachePath, "charts"),
+		},
+		Applier: &applier.Helmer{
+			ActionClientGetter: acg,
+		},
+	}
+
+	_ = &controllers.Engine{
+		Unpacker: unpacker,
+		Applier:  olmApplier,
 	}
 
 	cm := contentmanager.NewManager(clientRestConfigMapper, mgr.GetConfig(), mgr.GetRESTMapper())
@@ -440,8 +447,7 @@ func run() error {
 	if err = (&controllers.ClusterExtensionReconciler{
 		Client:                cl,
 		Resolver:              resolver,
-		Unpacker:              unpacker,
-		Applier:               applier,
+		Engine:                helmer,
 		InstalledBundleGetter: &controllers.DefaultInstalledBundleGetter{ActionClientGetter: acg},
 		Finalizers:            clusterExtensionFinalizers,
 		Manager:               cm,

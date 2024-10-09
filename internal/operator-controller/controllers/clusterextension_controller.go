@@ -55,7 +55,7 @@ import (
 	"github.com/operator-framework/operator-controller/internal/operator-controller/contentmanager"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/labels"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/resolve"
-	imageutil "github.com/operator-framework/operator-controller/internal/shared/util/image"
+	rukpaksource "github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/source"
 )
 
 const (
@@ -63,15 +63,16 @@ const (
 	ClusterExtensionCleanupContentManagerCacheFinalizer = "olm.operatorframework.io/cleanup-contentmanager-cache"
 )
 
+type Engine struct {
+	rukpaksource.Unpacker
+	Applier
+}
+
 // ClusterExtensionReconciler reconciles a ClusterExtension object
 type ClusterExtensionReconciler struct {
 	client.Client
-	Resolver resolve.Resolver
-
-	ImageCache  imageutil.Cache
-	ImagePuller imageutil.Puller
-
-	Applier               Applier
+	Resolver              resolve.Resolver
+	Engine                *Engine
 	Manager               contentmanager.Manager
 	controller            crcontroller.Controller
 	cache                 cache.Cache
@@ -253,9 +254,16 @@ func (r *ClusterExtensionReconciler) reconcile(ctx context.Context, ext *ocv1.Cl
 	SetDeprecationStatus(ext, resolvedBundle.Name, resolvedDeprecation)
 
 	resolvedBundleMetadata := bundleutil.MetadataFor(resolvedBundle.Name, *resolvedBundleVersion)
+	bundleSource := &rukpaksource.BundleSource{
+		Name: ext.GetName(),
+		Type: rukpaksource.SourceTypeImage,
+		Image: &rukpaksource.ImageSource{
+			Ref: resolvedBundle.Image,
+		},
+	}
 
 	l.Info("unpacking resolved bundle")
-	imageFS, _, _, err := r.ImagePuller.Pull(ctx, ext.GetName(), resolvedBundle.Image, r.ImageCache)
+	unpackResult, err := r.Engine.Unpack(ctx, bundleSource)
 	if err != nil {
 		// Wrap the error passed to this with the resolution information until we have successfully
 		// installed since we intend for the progressing condition to replace the resolved condition
@@ -287,7 +295,7 @@ func (r *ClusterExtensionReconciler) reconcile(ctx context.Context, ext *ocv1.Cl
 	// to ensure exponential backoff can occur:
 	//   - Permission errors (it is not possible to watch changes to permissions.
 	//     The only way to eventually recover from permission errors is to keep retrying).
-	managedObjs, _, err := r.Applier.Apply(ctx, imageFS, ext, objLbls, storeLbls)
+	managedObjs, _, err := r.Engine.Apply(ctx, unpackResult.Bundle, ext, objLbls, storeLbls)
 	if err != nil {
 		setStatusProgressing(ext, wrapErrorWithResolutionInfo(resolvedBundleMetadata, err))
 		// Now that we're actually trying to install, use the error
