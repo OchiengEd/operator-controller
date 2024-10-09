@@ -8,4 +8,4 @@ spec:
     type: Image
     image:
       pollIntervalMinutes: 10
-      ref: quay.io/operatorhubio/catalog:latest
+      ref: docker.io/perdasilva/catalog:test
