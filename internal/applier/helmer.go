@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"helm.sh/helm/v3/pkg/chart/loader"
 	"io"
 	"io/fs"
 	"strings"
+
+	"helm.sh/helm/v3/pkg/chart/loader"
 
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
@@ -19,7 +20,7 @@ import (
 
 	helmclient "github.com/operator-framework/helm-operator-plugins/pkg/client"
 
-	ocv1alpha1 "github.com/operator-framework/operator-controller/api/v1alpha1"
+	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 	"github.com/operator-framework/operator-controller/internal/rukpak/util"
 )
 
@@ -73,7 +74,7 @@ func loadChartFromFS(fsys fs.FS) (*chart.Chart, error) {
 	return chart, nil
 }
 
-func (h *Helmer) Apply(ctx context.Context, contentFS fs.FS, ext *ocv1alpha1.ClusterExtension, objectLabels map[string]string, storageLabels map[string]string) ([]client.Object, string, error) {
+func (h *Helmer) Apply(ctx context.Context, contentFS fs.FS, ext *ocv1.ClusterExtension, objectLabels map[string]string, storageLabels map[string]string) ([]client.Object, string, error) {
 	chrt, err := loadChartFromFS(contentFS)
 	if err != nil {
 		return nil, "", err
@@ -96,7 +97,7 @@ func (h *Helmer) Apply(ctx context.Context, contentFS fs.FS, ext *ocv1alpha1.Clu
 
 	switch state {
 	case StateNeedsInstall:
-		rel, err = ac.Install(ext.GetName(), ext.Spec.Install.Namespace, chrt, values, func(install *action.Install) error {
+		rel, err = ac.Install(ext.GetName(), ext.Spec.Namespace, chrt, values, func(install *action.Install) error {
 			install.CreateNamespace = false
 			install.Labels = storageLabels
 			return nil
@@ -105,7 +106,7 @@ func (h *Helmer) Apply(ctx context.Context, contentFS fs.FS, ext *ocv1alpha1.Clu
 			return nil, state, err
 		}
 	case StateNeedsUpgrade:
-		rel, err = ac.Upgrade(ext.GetName(), ext.Spec.Install.Namespace, chrt, values, func(upgrade *action.Upgrade) error {
+		rel, err = ac.Upgrade(ext.GetName(), ext.Spec.Namespace, chrt, values, func(upgrade *action.Upgrade) error {
 			upgrade.MaxHistory = maxHelmReleaseHistory
 			upgrade.Labels = storageLabels
 			return nil
@@ -129,7 +130,7 @@ func (h *Helmer) Apply(ctx context.Context, contentFS fs.FS, ext *ocv1alpha1.Clu
 	return relObjects, state, nil
 }
 
-func (h *Helmer) getReleaseState(cl helmclient.ActionInterface, ext *ocv1alpha1.ClusterExtension, chrt *chart.Chart, values chartutil.Values, post postrender.PostRenderer) (*release.Release, *release.Release, string, error) {
+func (h *Helmer) getReleaseState(cl helmclient.ActionInterface, ext *ocv1.ClusterExtension, chrt *chart.Chart, values chartutil.Values, post postrender.PostRenderer) (*release.Release, *release.Release, string, error) {
 	currentRelease, err := cl.Get(ext.GetName())
 	if err != nil && !errors.Is(err, driver.ErrReleaseNotFound) {
 		return nil, nil, StateError, err
@@ -139,7 +140,7 @@ func (h *Helmer) getReleaseState(cl helmclient.ActionInterface, ext *ocv1alpha1.
 	}
 
 	if errors.Is(err, driver.ErrReleaseNotFound) {
-		desiredRelease, err := cl.Install(ext.GetName(), ext.Spec.Install.Namespace, chrt, values, func(i *action.Install) error {
+		desiredRelease, err := cl.Install(ext.GetName(), ext.Spec.Namespace, chrt, values, func(i *action.Install) error {
 			i.DryRun = true
 			i.DryRunOption = "server"
 			return nil
@@ -149,7 +150,7 @@ func (h *Helmer) getReleaseState(cl helmclient.ActionInterface, ext *ocv1alpha1.
 		}
 		return nil, desiredRelease, StateNeedsInstall, nil
 	}
-	desiredRelease, err := cl.Upgrade(ext.GetName(), ext.Spec.Install.Namespace, chrt, values, func(upgrade *action.Upgrade) error {
+	desiredRelease, err := cl.Upgrade(ext.GetName(), ext.Spec.Namespace, chrt, values, func(upgrade *action.Upgrade) error {
 		upgrade.MaxHistory = maxHelmReleaseHistory
 		upgrade.DryRun = true
 		upgrade.DryRunOption = "server"

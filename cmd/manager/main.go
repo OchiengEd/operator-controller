@@ -209,8 +209,8 @@ func main() {
 	pureHelmGetter, err := helmclient.NewActionConfigGetter(mgr.GetConfig(), mgr.GetRESTMapper(),
 		helmclient.StorageDriverMapper(action.PureHelmStorageDriverMapper(clientRestConfigMapper, mgr.GetAPIReader())),
 		helmclient.ClientNamespaceMapper(func(obj client.Object) (string, error) {
-			ext := obj.(*ocv1alpha1.ClusterExtension)
-			return ext.Spec.Install.Namespace, nil
+			ext := obj.(*ocv1.ClusterExtension)
+			return ext.Spec.Namespace, nil
 		}),
 		// helmclient.StorageRestConfigMapper(clientRestConfigMapper),
 		helmclient.ClientRestConfigMapper(clientRestConfigMapper),
