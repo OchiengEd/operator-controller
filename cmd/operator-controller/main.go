@@ -322,7 +322,29 @@ func run() error {
 		return err
 	}
 
+	pureHelmGetter, err := helmclient.NewActionConfigGetter(mgr.GetConfig(), mgr.GetRESTMapper(),
+		helmclient.StorageDriverMapper(action.PureHelmStorageDriverMapper(clientRestConfigMapper, mgr.GetAPIReader())),
+		helmclient.ClientNamespaceMapper(func(obj client.Object) (string, error) {
+			ext := obj.(*ocv1.ClusterExtension)
+			return ext.Spec.Namespace, nil
+		}),
+		// helmclient.StorageRestConfigMapper(clientRestConfigMapper),
+		helmclient.ClientRestConfigMapper(clientRestConfigMapper),
+	)
+	if err != nil {
+		setupLog.Error(err, "unable to config for creating helm client")
+		os.Exit(1)
+	}
+
 	acg, err := action.NewWrappedActionClientGetter(cfgGetter,
+		helmclient.WithFailureRollbacks(false),
+	)
+	if err != nil {
+		setupLog.Error(err, "unable to create helm client")
+		return err
+	}
+
+	phg, err := action.NewWrappedActionClientGetter(pureHelmGetter,
 		helmclient.WithFailureRollbacks(false),
 	)
 	if err != nil {
@@ -424,7 +446,7 @@ func run() error {
 			BaseCachePath: filepath.Join(cfg.cachePath, "charts"),
 		},
 		Applier: &applier.Helmer{
-			ActionClientGetter: acg,
+			ActionClientGetter: phg,
 		},
 	}
 
