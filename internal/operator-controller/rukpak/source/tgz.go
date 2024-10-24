@@ -32,7 +32,7 @@ type TarGZ struct {
 }
 
 // downloader uses a custom HTTP client that accepts a URL and returns a HTTP response and an error
-// The client would be aware of know user-generated CA certificates
+// The client would be aware of the user-generated CA certificates
 func downloader(ctx context.Context, url string) (*http.Response, error) {
 	// Get a kubernetes client
 	client, err := kubeClient()
@@ -52,7 +52,7 @@ func downloader(ctx context.Context, url string) (*http.Response, error) {
 		caPEM = append(caPEM[:], v[:]...)
 	}
 
-	// Append the PEM certificate to a new certificate bool
+	// Append the PEM certificate to a new certificate pool
 	caPool := x509.NewCertPool()
 	if ok := caPool.AppendCertsFromPEM(caPEM); !ok {
 		return nil, errors.New("error creating PEM encoded certificate")
