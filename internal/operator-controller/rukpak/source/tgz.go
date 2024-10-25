@@ -52,8 +52,12 @@ func downloader(ctx context.Context, url string) (*http.Response, error) {
 		caPEM = append(caPEM[:], v[:]...)
 	}
 
-	// Append the PEM certificate to a new certificate pool
-	caPool := x509.NewCertPool()
+	// Append the PEM certificate to the system certificate pool
+	caPool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, fmt.Errorf("system certificate pool; %w", err)
+	}
+
 	if ok := caPool.AppendCertsFromPEM(caPEM); !ok {
 		return nil, errors.New("error creating PEM encoded certificate")
 	}
@@ -62,7 +66,7 @@ func downloader(ctx context.Context, url string) (*http.Response, error) {
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
+				InsecureSkipVerify: false,
 				RootCAs:            caPool,
 			},
 		},
