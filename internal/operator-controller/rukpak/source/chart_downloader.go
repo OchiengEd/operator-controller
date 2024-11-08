@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -51,7 +52,7 @@ func newChartDownloader(chart string) (chartDownloader, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("Unknown chart download protocol. Please check helm chart URL")
+	return nil, fmt.Errorf("unknown chart download protocol. Please check helm chart URL")
 }
 
 func (d *httpDownloader) Download(ctx context.Context, httpClient *http.Client) ([]byte, error) {
@@ -74,7 +75,7 @@ func (d *httpDownloader) Download(ctx context.Context, httpClient *http.Client) 
 }
 
 func (d *ociDownloader) Download(ctx context.Context, httpClient *http.Client) ([]byte, error) {
-	re := regexp.MustCompile(`^(?P<host>[a-zA-Z0-9:-]+)\/.*$`)
+	re := regexp.MustCompile(`^(?P<host>[a-zA-Z0-9\:\-\.]+)\/.*$`)
 	matches := re.FindStringSubmatch(d.url)
 	var host string = matches[re.SubexpIndex("host")]
 
@@ -114,22 +115,22 @@ func kubeClient() (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
-func buildCertPool(ctx context.Context, certificate, namespace string) (*x509.CertPool, error) {
+func httpClientWithCA(ctx context.Context, certificate, namespace string) (*http.Client, error) {
 	caPool, err := x509.SystemCertPool()
 	if err != nil {
-		return caPool, fmt.Errorf("system certificate pool; %w", err)
+		return &http.Client{}, fmt.Errorf("system certificate pool; %w", err)
 	}
 
 	// Get a kubernetes
 	client, err := kubeClient()
 	if err != nil {
-		return caPool, err
+		return &http.Client{}, err
 	}
 
 	// Retrieve the contents of the tls secret associated with cert-manager olmv1-ca certificate object
 	secret, err := client.CoreV1().Secrets(namespace).Get(ctx, certificate, metav1.GetOptions{})
 	if err != nil {
-		return caPool, err
+		return &http.Client{}, err
 	}
 
 	// Create a PEM certificate using the contents of the tls secret
@@ -143,5 +144,12 @@ func buildCertPool(ctx context.Context, certificate, namespace string) (*x509.Ce
 		return nil, errors.New("error creating PEM encoded certificate")
 	}
 
-	return caPool, nil
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: err != nil,
+				RootCAs:            caPool,
+			},
+		},
+	}, nil
 }
