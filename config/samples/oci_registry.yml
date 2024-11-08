@@ -1,0 +1,94 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: registry-cert
+  namespace: olmv1-system
+spec:
+  dnsNames:
+    - registry.olmv1-system
+    - registry.olmv1-system.svc
+    - registry.olmv1-system.svc.cluster.local
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: olmv1-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  secretName: registry-cert
+status: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: registry
+  name: registry
+  namespace: olmv1-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: registry
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - image: "docker.io/registry:2"
+        name: registry
+        env:
+          - name: "REGISTRY_HTTP_TLS_CERTIFICATE"
+            value: "/certs/tls.crt"
+          - name: "REGISTRY_HTTP_TLS_KEY"
+            value: "/certs/tls.key"
+        volumeMounts:
+          - name: fs
+            mountPath: /var/lib/registry/docker
+          - name: certs
+            mountPath: /certs
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - ALL
+          seccompProfile:
+            type: "RuntimeDefault"
+        ports:
+          - containerPort: 5000
+        resources: {}
+      volumes:
+        - name: fs
+          emptyDir: {}
+        - name: certs
+          secret:
+            secretName: registry-cert
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    app: registry
+  name: registry
+  namespace: olmv1-system
+spec:
+  ports:
+  - port: 5000
+    protocol: TCP
+    targetPort: 5000
+  selector:
+    app: registry
+status:
+  loadBalancer: {}
