@@ -5,11 +5,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -44,16 +42,9 @@ func (i *TarGZ) Unpack(ctx context.Context, bundle *BundleSource) (*Result, erro
 	}
 
 	// Append OLMv1 CA certificate file in PEM format to the system certificate pool
-	certPool, err := buildCertPool(ctx, "olmv1-cert", "olmv1-system")
-
-	// Create a custom HTTP client that will use the new certificate pool
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: err != nil,
-				RootCAs:            certPool,
-			},
-		},
+	httpClient, err := httpClientWithCA(ctx, "olmv1-cert", "olmv1-system")
+	if err != nil {
+		return nil, err
 	}
 
 	// Download the .tgz file
