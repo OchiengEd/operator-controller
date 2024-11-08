@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,8 +34,9 @@ func Test_chartDownloader(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
+			client, _ := httpClientWithCA(context.Background(), "olmv1-cert", "olmv1-system")
 			downloader, _ := newChartDownloader(tc.url)
-			got, err := downloader.Download(ctx, &http.Client{})
+			got, err := downloader.Download(ctx, client)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("error downloading chart; %v", err)
 				return
@@ -48,10 +48,9 @@ func Test_chartDownloader(t *testing.T) {
 				s := strings.Split(fileName, ":")
 				fileName = fmt.Sprintf("%s-%s.tgz", s[0], s[1])
 			}
-			t.Logf("Filename %s\n", fileName)
 
 			if checksum != tc.wantMd5 {
-				t.Errorf("The md5 sum for %s is %s but, was expecting %s",
+				t.Errorf("The md5.Sum() = %s is %s but, want = %s",
 					fileName,
 					checksum,
 					tc.wantMd5,
