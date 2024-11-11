@@ -35,7 +35,7 @@ func Test_chartDownloader(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			client, _ := httpClientWithCA(context.Background(), "olmv1-cert", "olmv1-system")
-			downloader, _ := newChartDownloader(tc.url)
+			downloader := newDownloadManager(tc.url)
 			got, err := downloader.Download(ctx, client)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("error downloading chart; %v", err)
