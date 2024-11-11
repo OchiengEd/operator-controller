@@ -48,10 +48,7 @@ func (i *TarGZ) Unpack(ctx context.Context, bundle *BundleSource) (*Result, erro
 	}
 
 	// Download the .tgz file
-	downloader, err := newChartDownloader(bundle.Image.Ref)
-	if err != nil {
-		return nil, reconcile.TerminalError(fmt.Errorf("error setting up chart downloader: %v", err))
-	}
+	downloader := newDownloadManager(bundle.Image.Ref)
 	content, err := downloader.Download(ctx, httpClient)
 	if err != nil {
 		return nil, reconcile.TerminalError(fmt.Errorf("error downloading bundle '%s': %v", bundle.Name, err))
