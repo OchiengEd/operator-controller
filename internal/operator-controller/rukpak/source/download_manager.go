@@ -20,7 +20,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-type chartDownloader interface {
+type downloadManager interface {
 	Download(context.Context, *http.Client) ([]byte, error)
 }
 
@@ -32,27 +32,25 @@ type ociDownloader struct {
 	url string
 }
 
-// downloader accepts a chart URL, detects protocol and
-// forwards request to the correct downloader
-func newChartDownloader(chart string) (chartDownloader, error) {
+// newDowloadManager accepts a chart URL, detects protocol and
+// returns a suitable download manager. It checks if the URL
+// scheme is "oci", if not "http" protocol is assumed.
+func newDownloadManager(chart string) downloadManager {
 	uri := strings.SplitN(chart, "://", 2)
 
 	if len(uri) > 1 {
 		var proto, cleanURL string = uri[0], uri[1]
 
-		switch proto {
-		case "oci":
+		if proto == "oci" {
 			return &ociDownloader{
 				url: cleanURL,
-			}, nil
-		case "http", "https":
-			return &httpDownloader{
-				url: chart,
-			}, nil
+			}
 		}
 	}
 
-	return nil, fmt.Errorf("unknown chart download protocol. Please check helm chart URL")
+	return &httpDownloader{
+		url: chart,
+	}
 }
 
 func (d *httpDownloader) Download(ctx context.Context, httpClient *http.Client) ([]byte, error) {
