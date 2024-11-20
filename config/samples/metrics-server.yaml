@@ -23,17 +23,16 @@ subjects:
     name: metrics-server-installer
     namespace: metrics-server
 ---
-apiVersion: olm.operatorframework.io/v1alpha1
+apiVersion: olm.operatorframework.io/v1
 kind: ClusterExtension
 metadata:
   name: metrics-server
 spec:
+  serviceAccount:
+    name: metrics-server-installer
   source:
     sourceType: Catalog
     catalog:
       packageName: metrics-server
       version: 3.12.0
-  install:
-    namespace: metrics-server
-    serviceAccount:
-      name: metrics-server-installer
+  namespace: metrics-server
