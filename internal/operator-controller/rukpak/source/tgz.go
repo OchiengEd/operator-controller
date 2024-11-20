@@ -21,9 +21,6 @@ import (
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/containers/image/v5/pkg/blobinfocache/none"
-	"github.com/containers/image/v5/types"
-	"github.com/opencontainers/go-digest"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -206,70 +203,4 @@ func (i *TarGZ) Cleanup(_ context.Context, bundle *BundleSource) error {
 
 func (i *TarGZ) bundlePath(bundleName string) string {
 	return filepath.Join(i.BaseCachePath, bundleName)
-}
-
-func (i *TarGZ) unpackPath(bundleName string, digest digest.Digest) string {
-	return filepath.Join(i.bundlePath(bundleName), digest.String())
-}
-
-func (i *TarGZ) unpackImage(ctx context.Context, unpackPath string, imageReference types.ImageReference, sourceContext *types.SystemContext) error {
-	img, err := imageReference.NewImage(ctx, sourceContext)
-	if err != nil {
-		return fmt.Errorf("error reading image: %w", err)
-	}
-	defer func() {
-		if err := img.Close(); err != nil {
-			panic(err)
-		}
-	}()
-
-	layoutSrc, err := imageReference.NewImageSource(ctx, sourceContext)
-	if err != nil {
-		return fmt.Errorf("error creating image source: %w", err)
-	}
-
-	if err := os.MkdirAll(unpackPath, 0700); err != nil {
-		return fmt.Errorf("error creating unpack directory: %w", err)
-	}
-	l := log.FromContext(ctx)
-	l.Info("unpacking image", "path", unpackPath)
-	for i, layerInfo := range img.LayerInfos() {
-		if err := func() error {
-			layerReader, _, err := layoutSrc.GetBlob(ctx, layerInfo, none.NoCache)
-			if err != nil {
-				return fmt.Errorf("error getting blob for layer[%d]: %w", i, err)
-			}
-			defer layerReader.Close()
-
-			if err := applyLayer(ctx, unpackPath, layerReader); err != nil {
-				return fmt.Errorf("error applying layer[%d]: %w", i, err)
-			}
-			l.Info("applied layer", "layer", i)
-			return nil
-		}(); err != nil {
-			return errors.Join(err, deleteRecursive(unpackPath))
-		}
-	}
-	if err := setReadOnlyRecursive(unpackPath); err != nil {
-		return fmt.Errorf("error making unpack directory read-only: %w", err)
-	}
-	return nil
-}
-
-func (i *TarGZ) deleteOtherImages(bundleName string, digestToKeep digest.Digest) error {
-	bundlePath := i.bundlePath(bundleName)
-	imgDirs, err := os.ReadDir(bundlePath)
-	if err != nil {
-		return fmt.Errorf("error reading image directories: %w", err)
-	}
-	for _, imgDir := range imgDirs {
-		if imgDir.Name() == digestToKeep.String() {
-			continue
-		}
-		imgDirPath := filepath.Join(bundlePath, imgDir.Name())
-		if err := deleteRecursive(imgDirPath); err != nil {
-			return fmt.Errorf("error removing image directory: %w", err)
-		}
-	}
-	return nil
 }
