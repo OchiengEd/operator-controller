@@ -1,4 +1,5 @@
-apiVersion: olm.operatorframework.io/v1alpha1
+---
+apiVersion: olm.operatorframework.io/v1
 kind: ClusterCatalog
 metadata:
   name: operatorhubio
@@ -7,4 +8,4 @@ spec:
     type: Image
     image:
       ref: quay.io/eochieng/metrics-server-catalog:latest
-      pollInterval: 10m
+      pollIntervalMinutes: 10
