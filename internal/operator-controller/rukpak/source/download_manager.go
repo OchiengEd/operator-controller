@@ -86,12 +86,26 @@ func (d *ociDownloader) Download(ctx context.Context, httpClient *http.Client) (
 		return nil, err
 	}
 
-	res, err := client.Pull(d.url, registry.PullOptWithChart(true))
+	res, err := client.Pull(chartNameConverter(d.url), registry.PullOptWithChart(true))
 	if err != nil {
 		return nil, err
 	}
 
 	return res.Chart.DescriptorPullSummary.Data, nil
+}
+
+// chartNameConverter accepts a helm compatible OCI chart URL
+// and return a chart name in the format <chart-name>:<version>
+// Input URL is returned if an invalid URL
+func chartNameConverter(chartURL string) string {
+	re := regexp.MustCompile(`(?P<base>.*)-(?P<ver>[0-9\.]+).tgz`)
+	match := re.FindStringSubmatch(chartURL)
+	if len(match) == 0 {
+		return chartURL
+	}
+	var baseURL string = match[re.SubexpIndex("base")]
+	var version string = match[re.SubexpIndex("ver")]
+	return fmt.Sprintf("%s:%s", baseURL, version)
 }
 
 func kubeClient() (*kubernetes.Clientset, error) {
