@@ -309,6 +309,11 @@ func (r *ClusterExtensionReconciler) reconcile(ctx context.Context, ext *ocv1.Cl
 		labels.OwnerNameKey: ext.GetName(),
 	}
 
+	// Remove scheme from OCI image URL
+	if strings.Contains(resolvedBundle.Image, "oci://") {
+		resolvedBundle.Image = strings.SplitN(resolvedBundle.Image, "://", 2)[0]
+	}
+
 	storeLbls := map[string]string{
 		labels.BundleNameKey:      resolvedBundle.Name,
 		labels.PackageNameKey:     resolvedBundle.Package,

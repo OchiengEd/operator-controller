@@ -59,3 +59,31 @@ func Test_chartDownloader(t *testing.T) {
 		})
 	}
 }
+
+func Test_chartNameConverter(t *testing.T) {
+	testtable := []struct {
+		name  string
+		image string
+		want  string
+	}{
+		{
+			name:  "Helm accepted OCI chart name",
+			image: "oci://localhost:5000/metrics-server-3.12.0.tgz",
+			want:  "oci://localhost:5000/metrics-server:3.12.0",
+		},
+		{
+			name:  "Helm with tagged chart name",
+			image: "oci://localhost:5000/metrics-server:3.12.0",
+			want:  "oci://localhost:5000/metrics-server:3.12.0",
+		},
+	}
+
+	for _, tc := range testtable {
+		t.Run(tc.name, func(t *testing.T) {
+			got := chartNameConverter(tc.image)
+			if got != tc.want {
+				t.Errorf("chartNameConverter() should return %s but, we got %s\n", tc.want, got)
+			}
+		})
+	}
+}
