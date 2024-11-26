@@ -311,7 +311,7 @@ func (r *ClusterExtensionReconciler) reconcile(ctx context.Context, ext *ocv1.Cl
 
 	// Remove scheme from OCI image URL
 	if strings.Contains(resolvedBundle.Image, "oci://") {
-		resolvedBundle.Image = strings.SplitN(resolvedBundle.Image, "://", 2)[0]
+		resolvedBundle.Image = registryAddrFormatter(resolvedBundle.Image)
 	}
 
 	storeLbls := map[string]string{
@@ -547,4 +547,9 @@ func (d *DefaultInstalledBundleGetter) GetInstalledBundle(ctx context.Context, e
 		}
 	}
 	return nil, nil
+}
+
+func registryAddrFormatter(url string) string {
+	s := strings.ReplaceAll(strings.SplitN(url, "://", 2)[1], ":", ".")
+	return strings.ReplaceAll(s, "/", "_")
 }
