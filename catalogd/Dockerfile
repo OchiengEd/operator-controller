@@ -5,4 +5,4 @@ WORKDIR /
 COPY catalogd catalogd
 USER 65532:65532
 
-ENTRYPOINT ["/manager"]
+ENTRYPOINT ["/catalogd"]
