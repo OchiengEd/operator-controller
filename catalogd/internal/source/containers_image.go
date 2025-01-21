@@ -20,6 +20,7 @@ import (
 	"github.com/containers/image/v5/oci/layout"
 	"github.com/containers/image/v5/pkg/blobinfocache/none"
 	"github.com/containers/image/v5/pkg/compression"
+	"github.com/containers/image/v5/pkg/sysregistriesv2"
 	"github.com/containers/image/v5/signature"
 	"github.com/containers/image/v5/types"
 	"github.com/go-logr/logr"
@@ -32,6 +33,8 @@ import (
 )
 
 const ConfigDirLabel = "operators.operatorframework.io.index.configs.v1"
+
+var insecurePolicy = []byte(`{"default":[{"type":"insecureAcceptAnything"}]}`)
 
 type ContainersImageRegistry struct {
 	BaseCachePath     string
@@ -48,6 +51,9 @@ func (i *ContainersImageRegistry) Unpack(ctx context.Context, catalog *catalogdv
 	if catalog.Spec.Source.Image == nil {
 		return nil, reconcile.TerminalError(fmt.Errorf("error parsing catalog, catalog %s has a nil image source", catalog.Name))
 	}
+
+	// Reload registries cache in case of configuration update
+	sysregistriesv2.InvalidateCache()
 
 	srcCtx, err := i.SourceContextFunc(l)
 	if err != nil {
@@ -249,9 +255,11 @@ func resolveCanonicalRef(ctx context.Context, imgRef reference.Named, imageCtx *
 
 func loadPolicyContext(sourceContext *types.SystemContext, l logr.Logger) (*signature.PolicyContext, error) {
 	policy, err := signature.DefaultPolicy(sourceContext)
-	if os.IsNotExist(err) {
+	// TODO: there are security implications to silently moving to an insecure policy
+	// tracking issue: https://github.com/operator-framework/operator-controller/issues/1622
+	if err != nil {
 		l.Info("no default policy found, using insecure policy")
-		policy, err = signature.NewPolicyFromBytes([]byte(`{"default":[{"type":"insecureAcceptAnything"}]}`))
+		policy, err = signature.NewPolicyFromBytes(insecurePolicy)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("error loading default policy: %w", err)
