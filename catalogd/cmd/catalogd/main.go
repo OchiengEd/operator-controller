@@ -18,6 +18,7 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/containers/image/v5/types"
 	"github.com/go-logr/logr"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -120,6 +122,9 @@ func main() {
 	flag.StringVar(&globalPullSecret, "global-pull-secret", "", "The <namespace>/<name> of the global pull secret that is going to be used to pull bundle images.")
 
 	klog.InitFlags(flag.CommandLine)
+	if klog.V(4).Enabled() {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
 
 	// Combine both flagsets and parse them
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
@@ -145,12 +150,16 @@ func main() {
 	}
 
 	if (certFile != "" && keyFile == "") || (certFile == "" && keyFile != "") {
-		setupLog.Error(nil, "unable to configure TLS certificates: tls-cert and tls-key flags must be used together")
+		setupLog.Error(errors.New("missing TLS configuration"),
+			"tls-cert and tls-key flags must be used together",
+			"certFile", certFile, "keyFile", keyFile)
 		os.Exit(1)
 	}
 
 	if metricsAddr != "" && certFile == "" && keyFile == "" {
-		setupLog.Error(nil, "metrics-bind-address requires tls-cert and tls-key flags to be set")
+		setupLog.Error(errors.New("invalid metrics configuration"),
+			"metrics-bind-address requires tls-cert and tls-key flags to be set",
+			"metricsAddr", metricsAddr, "certFile", certFile, "keyFile", keyFile)
 		os.Exit(1)
 	}
 

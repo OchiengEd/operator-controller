@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/containers/image/v5/types"
 	"github.com/go-logr/logr"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1client "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
@@ -54,20 +56,20 @@ import (
 
 	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 	catalogd "github.com/operator-framework/operator-controller/catalogd/api/v1"
-	"github.com/operator-framework/operator-controller/internal/action"
-	"github.com/operator-framework/operator-controller/internal/applier"
-	"github.com/operator-framework/operator-controller/internal/authentication"
-	"github.com/operator-framework/operator-controller/internal/catalogmetadata/cache"
-	catalogclient "github.com/operator-framework/operator-controller/internal/catalogmetadata/client"
-	"github.com/operator-framework/operator-controller/internal/contentmanager"
-	"github.com/operator-framework/operator-controller/internal/controllers"
-	"github.com/operator-framework/operator-controller/internal/features"
-	"github.com/operator-framework/operator-controller/internal/finalizers"
-	"github.com/operator-framework/operator-controller/internal/httputil"
-	"github.com/operator-framework/operator-controller/internal/resolve"
-	"github.com/operator-framework/operator-controller/internal/rukpak/preflights/crdupgradesafety"
-	"github.com/operator-framework/operator-controller/internal/rukpak/source"
-	"github.com/operator-framework/operator-controller/internal/scheme"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/action"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/applier"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/authentication"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/catalogmetadata/cache"
+	catalogclient "github.com/operator-framework/operator-controller/internal/operator-controller/catalogmetadata/client"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/contentmanager"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/controllers"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/features"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/finalizers"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/httputil"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/resolve"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/preflights/crdupgradesafety"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/source"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/scheme"
 	fsutil "github.com/operator-framework/operator-controller/internal/util/fs"
 	"github.com/operator-framework/operator-controller/internal/version"
 )
@@ -121,6 +123,9 @@ func main() {
 	flag.StringVar(&globalPullSecret, "global-pull-secret", "", "The <namespace>/<name> of the global pull secret that is going to be used to pull bundle images.")
 
 	klog.InitFlags(flag.CommandLine)
+	if klog.V(4).Enabled() {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
 
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	features.OperatorControllerFeatureGate.AddFlag(pflag.CommandLine)
@@ -132,12 +137,16 @@ func main() {
 	}
 
 	if (certFile != "" && keyFile == "") || (certFile == "" && keyFile != "") {
-		setupLog.Error(nil, "unable to configure TLS certificates: tls-cert and tls-key flags must be used together")
+		setupLog.Error(errors.New("missing TLS configuration"),
+			"tls-cert and tls-key flags must be used together",
+			"certFile", certFile, "keyFile", keyFile)
 		os.Exit(1)
 	}
 
 	if metricsAddr != "" && certFile == "" && keyFile == "" {
-		setupLog.Error(nil, "metrics-bind-address requires tls-cert and tls-key flags to be set")
+		setupLog.Error(errors.New("invalid metrics configuration"),
+			"metrics-bind-address requires tls-cert and tls-key flags to be set",
+			"metricsAddr", metricsAddr, "certFile", certFile, "keyFile", keyFile)
 		os.Exit(1)
 	}
 
