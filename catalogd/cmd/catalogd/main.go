@@ -61,9 +61,9 @@ import (
 	"github.com/operator-framework/operator-controller/catalogd/internal/serverutil"
 	"github.com/operator-framework/operator-controller/catalogd/internal/source"
 	"github.com/operator-framework/operator-controller/catalogd/internal/storage"
-	"github.com/operator-framework/operator-controller/catalogd/internal/version"
 	"github.com/operator-framework/operator-controller/catalogd/internal/webhook"
-	"github.com/operator-framework/operator-controller/internal/fsutil"
+	fsutil "github.com/operator-framework/operator-controller/internal/util/fs"
+	"github.com/operator-framework/operator-controller/internal/version"
 )
 
 var (
@@ -127,7 +127,7 @@ func main() {
 	pflag.Parse()
 
 	if catalogdVersion {
-		fmt.Printf("%#v\n", version.Version())
+		fmt.Printf("%#v\n", version.String())
 		os.Exit(0)
 	}
 
@@ -306,7 +306,7 @@ func main() {
 	localStorage = &storage.LocalDirV1{
 		RootDir:            storeDir,
 		RootURL:            baseStorageURL,
-		EnableQueryHandler: features.CatalogdFeatureGate.Enabled(features.APIV1QueryHandler),
+		EnableMetasHandler: features.CatalogdFeatureGate.Enabled(features.APIV1MetasHandler),
 	}
 
 	// Config for the catalogd web server

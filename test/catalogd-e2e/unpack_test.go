@@ -1,4 +1,4 @@
-package e2e
+package catalogde2e
 
 import (
 	"context"
@@ -19,11 +19,6 @@ import (
 const (
 	catalogRefEnvVar = "TEST_CATALOG_IMAGE"
 	catalogName      = "test-catalog"
-	pkg              = "prometheus"
-	version          = "0.47.0"
-	channel          = "beta"
-	bundle           = "prometheus-operator.0.47.0"
-	bundleImage      = "localhost/testdata/bundles/registry-v1/prometheus-operator:v0.47.0"
 )
 
 // catalogImageRef returns the image reference for the test catalog image, defaulting to the value of the environment
@@ -84,7 +79,7 @@ var _ = Describe("ClusterCatalog Unpacking", func() {
 			actualFBC, err := ReadTestCatalogServerContents(ctx, catalog, c, kubeClient)
 			Expect(err).To(Not(HaveOccurred()))
 
-			expectedFBC, err := os.ReadFile("../../testdata/catalogs/test-catalog/expected_all.json")
+			expectedFBC, err := os.ReadFile("../../catalogd/testdata/catalogs/test-catalog/expected_all.json")
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(cmp.Diff(expectedFBC, actualFBC)).To(BeEmpty())
 
