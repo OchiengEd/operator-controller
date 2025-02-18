@@ -72,8 +72,6 @@ CATALOGD_KUSTOMIZE_BUILD_DIR := catalogd/config/overlays/cert-manager
 
 .DEFAULT_GOAL := build
 
-GINKGO := go run github.com/onsi/ginkgo/v2/ginkgo
-
 #SECTION General
 
 # The help target prints out all targets with their descriptions organized
@@ -115,16 +113,18 @@ tidy: #HELP Update dependencies.
 	# Force tidy to use the version already in go.mod
 	$(Q)go mod tidy -go=$(GOLANG_VERSION)
 
-
 .PHONY: manifests
 KUSTOMIZE_CRDS_DIR := config/base/crd/bases
 KUSTOMIZE_RBAC_DIR := config/base/rbac
+KUSTOMIZE_WEBHOOKS_DIR := config/base/manager/webhook
 manifests: $(CONTROLLER_GEN) #EXHELP Generate WebhookConfiguration, ClusterRole, and CustomResourceDefinition objects.
-	# To generate the manifests used and do not use catalogd directory
+	# Generate the operator-controller manifests
 	rm -rf $(KUSTOMIZE_CRDS_DIR) && $(CONTROLLER_GEN) crd paths=./api/... output:crd:artifacts:config=$(KUSTOMIZE_CRDS_DIR)
 	rm -f $(KUSTOMIZE_RBAC_DIR)/role.yaml && $(CONTROLLER_GEN) rbac:roleName=manager-role paths=./internal/operator-controller/... output:rbac:artifacts:config=$(KUSTOMIZE_RBAC_DIR)
-	# To generate the manifests for catalogd
-	$(MAKE) -C catalogd generate
+	# Generate the catalogd manifests
+	rm -rf catalogd/$(KUSTOMIZE_CRDS_DIR) && $(CONTROLLER_GEN) crd paths="./catalogd/api/..." output:crd:artifacts:config=catalogd/$(KUSTOMIZE_CRDS_DIR)
+	rm -f catalogd/$(KUSTOMIZE_RBAC_DIR)/role.yaml && $(CONTROLLER_GEN) rbac:roleName=manager-role paths="./internal/catalogd/..." output:rbac:artifacts:config=catalogd/$(KUSTOMIZE_RBAC_DIR)
+	rm -f catalogd/$(KUSTOMIZE_WEBHOOKS_DIR)/manifests.yaml && $(CONTROLLER_GEN) webhook paths="./internal/catalogd/..." output:webhook:artifacts:config=catalogd/$(KUSTOMIZE_WEBHOOKS_DIR)
 
 .PHONY: generate
 generate: $(CONTROLLER_GEN) #EXHELP Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -221,40 +221,8 @@ image-registry: ## Build the testdata catalog used for e2e tests and push it to 
 test-e2e: KIND_CLUSTER_NAME := operator-controller-e2e
 test-e2e: KUSTOMIZE_BUILD_DIR := config/overlays/e2e
 test-e2e: GO_BUILD_FLAGS := -cover
+test-e2e: CATALOGD_KUSTOMIZE_BUILD_DIR := catalogd/config/overlays/e2e
 test-e2e: run image-registry e2e e2e-coverage kind-clean #HELP Run e2e test suite on local kind cluster
-
-# Catalogd e2e tests
-FOCUS := $(if $(TEST),-v -focus "$(TEST)")
-ifeq ($(origin E2E_FLAGS), undefined)
-E2E_FLAGS :=
-endif
-test-catalogd-e2e: ## Run the e2e tests on existing cluster
-	$(GINKGO) $(E2E_FLAGS) -trace -vv $(FOCUS) test/catalogd-e2e
-
-catalogd-e2e: KIND_CLUSTER_NAME := catalogd-e2e
-catalogd-e2e: ISSUER_KIND := Issuer
-catalogd-e2e: ISSUER_NAME := selfsigned-issuer
-catalogd-e2e: CATALOGD_KUSTOMIZE_BUILD_DIR := catalogd/config/overlays/e2e
-catalogd-e2e: run catalogd-image-registry test-catalogd-e2e ##  kind-clean Run e2e test suite on local kind cluster
-
-## image-registry target has to come after run-latest-release,
-## because the image-registry depends on the olm-ca issuer.
-.PHONY: test-catalogd-upgrade-e2e
-test-catalogd-upgrade-e2e: export TEST_CLUSTER_CATALOG_NAME := test-catalog
-test-catalogd-upgrade-e2e: export TEST_CLUSTER_CATALOG_IMAGE := docker-registry.catalogd-e2e.svc:5000/test-catalog:e2e
-test-catalogd-upgrade-e2e: ISSUER_KIND=ClusterIssuer
-test-catalogd-upgrade-e2e: ISSUER_NAME=olmv1-ca
-test-catalogd-upgrade-e2e: kind-cluster docker-build kind-load run-latest-release catalogd-image-registry catalogd-pre-upgrade-setup kind-deploy catalogd-post-upgrade-checks kind-clean ## Run upgrade e2e tests on a local kind cluster
-
-.PHONY: catalogd-post-upgrade-checks
-catalogd-post-upgrade-checks:
-	$(GINKGO) $(E2E_FLAGS) -trace -vv $(FOCUS) test/catalogd-upgrade-e2e
-
-catalogd-pre-upgrade-setup:
-	./test/tools/imageregistry/pre-upgrade-setup.sh ${TEST_CLUSTER_CATALOG_IMAGE} ${TEST_CLUSTER_CATALOG_NAME}
-
-catalogd-image-registry: ## Setup in-cluster image registry
-	./test/tools/imageregistry/registry.sh $(ISSUER_KIND) $(ISSUER_NAME)
 
 .PHONY: extension-developer-e2e
 extension-developer-e2e: KUSTOMIZE_BUILD_DIR := config/overlays/cert-manager
