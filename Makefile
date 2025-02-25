@@ -9,23 +9,28 @@ export ROOT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 GOLANG_VERSION := $(shell sed -En 's/^go (.*)$$/\1/p' "go.mod")
 # Image URL to use all building/pushing image targets
-ifeq ($(origin IMAGE_REPO), undefined)
-IMAGE_REPO := quay.io/operator-framework/operator-controller
+ifeq ($(origin IMG_NAMESPACE), undefined)
+IMG_NAMESPACE := quay.io/operator-framework
 endif
-export IMAGE_REPO
+export IMG_NAMESPACE
 
-ifeq ($(origin CATALOG_IMAGE_REPO), undefined)
-CATALOG_IMAGE_REPO := quay.io/operator-framework/catalogd
+ifeq ($(origin OPERATOR_CONTROLLER_IMAGE_REPO), undefined)
+OPERATOR_CONTROLLER_IMAGE_REPO := $(IMG_NAMESPACE)/operator-controller
 endif
-export CATALOG_IMAGE_REPO
+export OPERATOR_CONTROLLER_IMAGE_REPO
+
+ifeq ($(origin CATALOGD_IMAGE_REPO), undefined)
+CATALOGD_IMAGE_REPO := $(IMG_NAMESPACE)/catalogd
+endif
+export CATALOGD_IMAGE_REPO
 
 ifeq ($(origin IMAGE_TAG), undefined)
 IMAGE_TAG := devel
 endif
 export IMAGE_TAG
 
-IMG := $(IMAGE_REPO):$(IMAGE_TAG)
-CATALOGD_IMG := $(CATALOG_IMAGE_REPO):$(IMAGE_TAG)
+OPERATOR_CONTROLLER_IMG := $(OPERATOR_CONTROLLER_IMAGE_REPO):$(IMAGE_TAG)
+CATALOGD_IMG := $(CATALOGD_IMAGE_REPO):$(IMAGE_TAG)
 
 # Define dependency versions (use go.mod if we also use Go code from dependency)
 export CERT_MGR_VERSION := v1.15.3
@@ -87,7 +92,7 @@ KUSTOMIZE_BUILD_DIR := config/overlays/cert-manager
 
 .PHONY: help
 help: #HELP Display essential help.
-	@awk 'BEGIN {FS = ":[^#]*#HELP"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\n"} /^[a-zA-Z_0-9-]+:.*#HELP / { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":[^#]*#HELP"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\n"} /^[a-zA-Z_0-9-]+:.*#HELP / { printf "  \033[36m%-17s\033[0m %s\n", $$1, $$2 } ' $(MAKEFILE_LIST)
 
 .PHONY: help-extended
 help-extended: #HELP Display extended help.
@@ -100,11 +105,11 @@ lint: lint-custom $(GOLANGCI_LINT) #HELP Run golangci linter.
 	$(GOLANGCI_LINT) run --build-tags $(GO_BUILD_TAGS) $(GOLANGCI_LINT_ARGS)
 
 .PHONY: custom-linter-build
-custom-linter-build: #HELP Build custom linter
+custom-linter-build: #EXHELP Build custom linter
 	go build -tags $(GO_BUILD_TAGS) -o ./bin/custom-linter ./hack/ci/custom-linters/cmd
 
 .PHONY: lint-custom
-lint-custom: custom-linter-build #HELP Call custom linter for the project
+lint-custom: custom-linter-build #EXHELP Call custom linter for the project
 	go vet -tags=$(GO_BUILD_TAGS) -vettool=./bin/custom-linter ./...
 
 .PHONY: tidy
@@ -165,6 +170,8 @@ CRD_DIFF_CONFIG := crd-diff-config.yaml
 verify-crd-compatibility: $(CRD_DIFF) manifests
 	$(CRD_DIFF) --config="${CRD_DIFF_CONFIG}" "${CRD_DIFF_ORIGINAL_REF}${CRD_DIFF_OPCON_SOURCE}" ${CRD_DIFF_UPDATED_REF}${CRD_DIFF_OPCON_SOURCE}
 	$(CRD_DIFF) --config="${CRD_DIFF_CONFIG}" "${CRD_DIFF_ORIGINAL_REF}${CRD_DIFF_CATD_SOURCE}" ${CRD_DIFF_UPDATED_REF}${CRD_DIFF_CATD_SOURCE}
+
+#SECTION Test
 
 .PHONY: test
 test: manifests generate fmt lint test-unit test-e2e #HELP Run all tests.
@@ -231,9 +238,9 @@ test-e2e: run image-registry e2e e2e-coverage kind-clean #HELP Run e2e test suit
 
 .PHONY: extension-developer-e2e
 extension-developer-e2e: KUSTOMIZE_BUILD_DIR := config/overlays/cert-manager
-extension-developer-e2e: KIND_CLUSTER_NAME := operator-controller-ext-dev-e2e  #EXHELP Run extension-developer e2e on local kind cluster
-extension-developer-e2e: export INSTALL_DEFAULT_CATALOGS := false  #EXHELP Run extension-developer e2e on local kind cluster
-extension-developer-e2e: run image-registry test-ext-dev-e2e kind-clean
+extension-developer-e2e: KIND_CLUSTER_NAME := operator-controller-ext-dev-e2e
+extension-developer-e2e: export INSTALL_DEFAULT_CATALOGS := false
+extension-developer-e2e: run image-registry test-ext-dev-e2e kind-clean #EXHELP Run extension-developer e2e on local kind cluster
 
 .PHONY: run-latest-release
 run-latest-release:
@@ -257,10 +264,12 @@ test-upgrade-e2e: kind-cluster run-latest-release image-registry pre-upgrade-set
 e2e-coverage:
 	COVERAGE_OUTPUT=./coverage/e2e.out ./hack/test/e2e-coverage.sh
 
+#SECTION KIND Cluster Operations
+
 .PHONY: kind-load
 kind-load: $(KIND) #EXHELP Loads the currently constructed images into the KIND cluster.
-	$(CONTAINER_RUNTIME) save $(IMG) | $(KIND) load image-archive /dev/stdin --name $(KIND_CLUSTER_NAME)
-	IMAGE_REPO=$(CATALOG_IMAGE_REPO) KIND_CLUSTER_NAME=$(KIND_CLUSTER_NAME) $(MAKE) -C catalogd kind-load
+	$(CONTAINER_RUNTIME) save $(OPERATOR_CONTROLLER_IMG) | $(KIND) load image-archive /dev/stdin --name $(KIND_CLUSTER_NAME)
+	$(CONTAINER_RUNTIME) save $(CATALOGD_IMG) | $(KIND) load image-archive /dev/stdin --name $(KIND_CLUSTER_NAME)
 
 .PHONY: kind-deploy
 kind-deploy: export MANIFEST := ./operator-controller.yaml
@@ -300,8 +309,9 @@ export GO_BUILD_FLAGS :=
 export GO_BUILD_LDFLAGS := -s -w \
     -X '$(VERSION_PATH).version=$(VERSION)' \
 
-BINARIES=operator-controller
+BINARIES=operator-controller catalogd
 
+.PHONY: $(BINARIES)
 $(BINARIES):
 	go build $(GO_BUILD_FLAGS) -tags '$(GO_BUILD_TAGS)' -ldflags '$(GO_BUILD_LDFLAGS)' -gcflags '$(GO_BUILD_GCFLAGS)' -asmflags '$(GO_BUILD_ASMFLAGS)' -o $(BUILDBIN)/$@ ./cmd/$@
 
@@ -329,9 +339,9 @@ wait:
 	kubectl wait --for=condition=Ready --namespace=$(CATALOGD_NAMESPACE) certificate/catalogd-service-cert # Avoid upgrade test flakes when reissuing cert
 
 .PHONY: docker-build
-docker-build: build-linux  #EXHELP Build docker image for operator-controller and catalog with GOOS=linux and local GOARCH.
-	$(CONTAINER_RUNTIME) build -t $(IMG) -f Dockerfile ./bin/linux
-	IMAGE_REPO=$(CATALOG_IMAGE_REPO) $(MAKE) -C catalogd build-container
+docker-build: build-linux #EXHELP Build docker image for operator-controller and catalog with GOOS=linux and local GOARCH.
+	$(CONTAINER_RUNTIME) build -t $(OPERATOR_CONTROLLER_IMG) -f Dockerfile.operator-controller ./bin/linux
+	$(CONTAINER_RUNTIME) build -t $(CATALOGD_IMG) -f Dockerfile.catalogd ./bin/linux
 
 #SECTION Release
 ifeq ($(origin ENABLE_RELEASE_PIPELINE), undefined)
@@ -346,7 +356,7 @@ export GORELEASER_ARGS
 
 .PHONY: release
 release: $(GORELEASER) #EXHELP Runs goreleaser for the operator-controller. By default, this will run only as a snapshot and will not publish any artifacts unless it is run with different arguments. To override the arguments, run with "GORELEASER_ARGS=...". When run as a github action from a tag, this target will publish a full release.
-	OPERATOR_CONTROLLER_IMAGE_REPO=$(IMAGE_REPO) CATALOGD_IMAGE_REPO=$(CATALOG_IMAGE_REPO) $(GORELEASER) $(GORELEASER_ARGS)
+	OPERATOR_CONTROLLER_IMAGE_REPO=$(OPERATOR_CONTROLLER_IMAGE_REPO) CATALOGD_IMAGE_REPO=$(CATALOGD_IMAGE_REPO) $(GORELEASER) $(GORELEASER_ARGS)
 
 .PHONY: quickstart
 quickstart: export MANIFEST := https://github.com/operator-framework/operator-controller/releases/download/$(VERSION)/operator-controller.yaml
