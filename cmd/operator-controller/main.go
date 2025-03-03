@@ -440,9 +440,8 @@ func run() error {
 	if err = (&controllers.ClusterExtensionReconciler{
 		Client:                cl,
 		Resolver:              resolver,
-		ImageCache:            imageCache,
-		ImagePuller:           imagePuller,
-		Applier:               helmApplier,
+		Unpacker:              unpacker,
+		Applier:               applier,
 		InstalledBundleGetter: &controllers.DefaultInstalledBundleGetter{ActionClientGetter: acg},
 		Finalizers:            clusterExtensionFinalizers,
 		Manager:               cm,
