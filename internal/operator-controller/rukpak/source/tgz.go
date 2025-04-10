@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -20,6 +21,7 @@ import (
 
 type TarGZ struct {
 	BaseCachePath string
+	client.Client
 }
 
 func (i *TarGZ) Unpack(ctx context.Context, bundle *BundleSource) (*Result, error) {
@@ -34,37 +36,24 @@ func (i *TarGZ) Unpack(ctx context.Context, bundle *BundleSource) (*Result, erro
 	if err != nil {
 		return nil, reconcile.TerminalError(fmt.Errorf("error downloading bundle '%s': %v", bundle.Name, err))
 	}
-	fileName := path.Base(parsedURL.Path)
-	if strings.Contains(fileName, ":") {
-		s := strings.Split(fileName, ":")
-		fileName = fmt.Sprintf("%s-%s.tgz", s[0], s[1])
-	}
 
-	// Append OLMv1 CA certificate file in PEM format to the system certificate pool
-	httpClient, err := httpClientWithCA(ctx, "olmv1-cert", "olmv1-system")
+	response, err := i.PullChart(ctx, parsedURL.String())
 	if err != nil {
 		return nil, err
 	}
 
-	// Download the .tgz file
-	downloader := newDownloadManager(bundle.Image.Ref)
-	content, err := downloader.Download(ctx, httpClient)
-	if err != nil {
-		return nil, reconcile.TerminalError(fmt.Errorf("error downloading bundle '%s': %v", bundle.Name, err))
+	fileName := response.FileName()
+	unpackDir := path.Join(i.BaseCachePath, bundle.Name, fileName)
+	if err := os.MkdirAll(unpackDir, 0700); err != nil {
+		return nil, fmt.Errorf("error creating temporary directory: %w", err)
 	}
 
 	// Open a gzip reader
-	gzReader, err := gzip.NewReader(bytes.NewReader(content))
+	gzReader, err := gzip.NewReader(bytes.NewReader(response.Bytes()))
 	if err != nil {
 		return nil, reconcile.TerminalError(fmt.Errorf("error unpacking bundle '%s': %v", bundle.Name, err))
 	}
 	defer gzReader.Close()
-
-	unpackDir := path.Join(i.BaseCachePath, bundle.Name, fileName)
-	err = os.MkdirAll(unpackDir, 0700)
-	if err != nil {
-		return nil, fmt.Errorf("error creating temporary directory: %w", err)
-	}
 
 	// Open a tar reader
 	tarReader := tar.NewReader(gzReader)
