@@ -444,6 +444,7 @@ func run() error {
 	helmEngine := &controllers.Engine{
 		Unpacker: &source.TarGZ{
 			BaseCachePath: filepath.Join(cfg.cachePath, "charts"),
+			Client:        mgr.GetClient(),
 		},
 		Applier: &applier.Helmer{
 			ActionClientGetter: phg,
