@@ -26,6 +26,7 @@ import (
 
 	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/authorization"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/labels"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/preflights/crdupgradesafety"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/util"
 )
@@ -115,6 +116,7 @@ func (h *Helm) runPreAuthorizationChecks(ctx context.Context, ext *ocv1.ClusterE
 }
 
 func (h *Helm) Apply(ctx context.Context, contentFS fs.FS, ext *ocv1.ClusterExtension, objectLabels map[string]string, storageLabels map[string]string) ([]client.Object, string, error) {
+	storageLabels = helmifyLabels(storageLabels)
 	chrt, err := h.buildHelmChart(contentFS, ext)
 	if err != nil {
 		return nil, "", err
@@ -320,4 +322,19 @@ func ruleDescription(ns string, rule rbacv1.PolicyRule) string {
 		sb.WriteString(fmt.Sprintf(" NonResourceURLs:[%s]", strings.Join(slices.Sorted(slices.Values(rule.NonResourceURLs)), ",")))
 	}
 	return sb.String()
+}
+
+// Replace restricted characters from storage labels
+func helmifyLabels(properties map[string]string) map[string]string {
+	if strings.Contains(properties[labels.BundleReferenceKey], "/") {
+		properties[labels.BundleReferenceKey] = strings.ReplaceAll(
+			properties[labels.BundleReferenceKey], "/", "_")
+	}
+
+	if strings.Contains(properties[labels.BundleReferenceKey], ":") {
+		properties[labels.BundleReferenceKey] = strings.ReplaceAll(
+			properties[labels.BundleReferenceKey], ":", "_")
+	}
+
+	return properties
 }
