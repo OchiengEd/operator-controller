@@ -24,6 +24,7 @@ import (
 
 	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/features"
+	"github.com/operator-framework/operator-controller/internal/operator-controller/labels"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/preflights/crdupgradesafety"
 	"github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/util"
 )
@@ -80,6 +81,7 @@ func shouldSkipPreflight(ctx context.Context, preflight Preflight, ext *ocv1.Clu
 }
 
 func (h *Helm) Apply(ctx context.Context, contentFS fs.FS, ext *ocv1.ClusterExtension, objectLabels map[string]string, storageLabels map[string]string) ([]client.Object, string, error) {
+	storageLabels = helmifyLabels(storageLabels)
 	chrt, err := h.buildHelmChart(contentFS, ext)
 	if err != nil {
 		return nil, "", err
@@ -231,4 +233,19 @@ func (p *postrenderer) Run(renderedManifests *bytes.Buffer) (*bytes.Buffer, erro
 		return p.cascade.Run(&buf)
 	}
 	return &buf, nil
+}
+
+// Replace restricted characters from storage labels
+func helmifyLabels(properties map[string]string) map[string]string {
+	if strings.Contains(properties[labels.BundleReferenceKey], "/") {
+		properties[labels.BundleReferenceKey] = strings.ReplaceAll(
+			properties[labels.BundleReferenceKey], "/", "_")
+	}
+
+	if strings.Contains(properties[labels.BundleReferenceKey], ":") {
+		properties[labels.BundleReferenceKey] = strings.ReplaceAll(
+			properties[labels.BundleReferenceKey], ":", "_")
+	}
+
+	return properties
 }
