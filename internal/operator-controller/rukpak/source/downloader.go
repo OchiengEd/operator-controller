@@ -9,15 +9,15 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/registry"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 type HelmDownloader interface {
@@ -71,18 +71,8 @@ func (r *PullResponse) IsChart() bool {
 }
 
 func (i *TarGZ) PullChart(ctx context.Context, chart string) (*PullResponse, error) {
-	tlsSecret := &corev1.Secret{}
-	if err := i.Get(ctx,
-		types.NamespacedName{
-			Name:      "registry-cert",
-			Namespace: "olmv1-system",
-		},
-		tlsSecret); err != nil {
-		return nil, err
-	}
-
 	// Get http client with the OLMv1 CA certificate
-	client, err := httpClientWithCustomCA(tlsSecret)
+	client, err := httpClientWithCustomCA()
 	if err != nil {
 		return nil, err
 	}
@@ -92,9 +82,10 @@ func (i *TarGZ) PullChart(ctx context.Context, chart string) (*PullResponse, err
 		return nil, fmt.Errorf("invalid helm chart uri")
 	}
 
-	// OCI urls do not have a scheme and will return
-	// an empty scheme and host
-	if addr.Scheme != "" && addr.Host != "" {
+	// If URL contains a scheme and the scheme starts
+	//  with 'HTTP', then it would need a HTTP downloader
+	if addr.Scheme != "" &&
+		strings.HasPrefix(addr.Scheme, "http") {
 		return (&httpDownloader{
 			Client: client,
 		}).download(ctx, chart)
@@ -105,7 +96,7 @@ func (i *TarGZ) PullChart(ctx context.Context, chart string) (*PullResponse, err
 	}).download(ctx, chart)
 }
 
-func (d *httpDownloader) download(ctx context.Context, url string) (*PullResponse, error) {
+func (d *httpDownloader) download(_ context.Context, url string) (*PullResponse, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -132,7 +123,7 @@ func (d *httpDownloader) download(ctx context.Context, url string) (*PullRespons
 	return &PullResponse{chart, raw, filename}, nil
 }
 
-func (d *ociDownloader) download(ctx context.Context, url string) (*PullResponse, error) {
+func (d *ociDownloader) download(_ context.Context, url string) (*PullResponse, error) {
 	re := regexp.MustCompile(`^(?P<host>[a-zA-Z0-9\:\-\.]+)\/.*$`)
 	matches := re.FindStringSubmatch(url)
 	host := matches[re.SubexpIndex("host")]
@@ -173,38 +164,33 @@ func (d *ociDownloader) download(ctx context.Context, url string) (*PullResponse
 	return &PullResponse{chart, raw, filename}, nil
 }
 
-func httpClientWithCustomCA(tlsSecret *corev1.Secret) (*http.Client, error) {
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-		},
-	}
-
-	if _, ok := tlsSecret.Data["tls.crt"]; !ok {
-		return httpClient, fmt.Errorf("kubernetes tls secret not found")
-	}
+func httpClientWithCustomCA() (*http.Client, error) {
+	httpClient := &http.Client{}
 
 	certPool, err := x509.SystemCertPool()
 	if err != nil {
-		return httpClient, fmt.Errorf("x509 certificate pool; %w", err)
+		return httpClient, fmt.Errorf("create certificate pool; %w", err)
 	}
 
-	if !certPool.AppendCertsFromPEM(tlsSecret.Data["ca.crt"]) {
-		return nil, fmt.Errorf("error appending provided CA certificate")
-	}
-
-	// Create default http.Client if no tls certificate was created
-	certPEM := bytes.TrimRight(tlsSecret.Data["tls.crt"], "\n")
-	keyPEM := bytes.TrimRight(tlsSecret.Data["tls.key"], "\n")
-
-	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	// Read and append OLM CA certificate to certificate pool
+	caFileName := "/var/certs/olm-ca.crt"
+	f, err := os.Open(caFileName)
 	if err != nil {
-		return httpClient, fmt.Errorf("create x509 tls certificate; %w", err)
+		return httpClient, fmt.Errorf("open CA cert at %s; %v", caFileName, err)
+	}
+	defer f.Close()
+
+	pem, err := io.ReadAll(f)
+	if err != nil {
+		return httpClient, fmt.Errorf("reading OLM CA certificate; %v", err)
+	}
+
+	if !certPool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("error appending provided CA certificate")
 	}
 
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			Certificates:       []tls.Certificate{cert},
 			RootCAs:            certPool,
 			InsecureSkipVerify: false,
 		},

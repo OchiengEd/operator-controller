@@ -75,6 +75,7 @@ func loadChartFromFS(fsys fs.FS) (*chart.Chart, error) {
 }
 
 func (h *Helmer) Apply(ctx context.Context, contentFS fs.FS, ext *ocv1.ClusterExtension, objectLabels map[string]string, storageLabels map[string]string) ([]client.Object, string, error) {
+	storageLabels = helmifyLabels(storageLabels)
 	chrt, err := loadChartFromFS(contentFS)
 	if err != nil {
 		return nil, "", err

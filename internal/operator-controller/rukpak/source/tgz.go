@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -21,7 +20,6 @@ import (
 
 type TarGZ struct {
 	BaseCachePath string
-	client.Client
 }
 
 func (i *TarGZ) Unpack(ctx context.Context, bundle *BundleSource) (*Result, error) {
