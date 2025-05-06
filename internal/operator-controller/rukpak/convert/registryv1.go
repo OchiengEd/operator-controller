@@ -1,7 +1,6 @@
 package convert
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -9,10 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -30,6 +27,8 @@ import (
 	"github.com/operator-framework/operator-controller/internal/operator-controller/rukpak/render/validators"
 )
 
+var ErrHelmContentFound = fmt.Errorf("helm chart content found")
+
 type Plain struct {
 	Objects []client.Object
 }
@@ -40,7 +39,7 @@ func RegistryV1ToHelmChart(rv1 fs.FS, installNamespace string, watchNamespace st
 		// If the metadata/annotations.yaml file does not exist,
 		// walk the directory to check for helm charts
 		if os.IsNotExist(err) {
-			return loadDownloadedHelmChart(rv1, installNamespace)
+			return nil, ErrHelmContentFound
 		}
 		return nil, err
 	}
@@ -65,34 +64,6 @@ func RegistryV1ToHelmChart(rv1 fs.FS, installNamespace string, watchNamespace st
 	}
 
 	return chrt, nil
-}
-
-func loadDownloadedHelmChart(bundleFS fs.FS, installNamespace string) (*chart.Chart, error) {
-	var filename string
-
-	if err := fs.WalkDir(bundleFS, ".", func(path string, f fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if strings.HasSuffix(f.Name(), ".tgz") && !f.IsDir() {
-			filename = path
-			return fs.SkipAll
-		}
-
-		return nil
-	}); err != nil && !errors.Is(err, fs.SkipAll) {
-		return nil, err
-	}
-
-	if filename == "" {
-		return nil, fmt.Errorf("no helm chart found")
-	}
-
-	tarball, err := fs.ReadFile(bundleFS, filename)
-	if err != nil {
-		return nil, fmt.Errorf("reading helm chart; %+v\n", err)
-	}
-	return loader.LoadArchive(bytes.NewBuffer(tarball))
 }
 
 // ParseFS converts the rv1 filesystem into a render.RegistryV1.
